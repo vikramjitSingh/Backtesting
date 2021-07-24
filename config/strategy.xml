@@ -1,0 +1,40 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<!-- define a structure that will have the C1, V1, B, C2, V2
+each component will have start and end range of input parameters
+software will iterate the components over the dataset from start range to end range.
+Any of the component can be reused in any other component, i.e., may not be mutually exclusive
+Each component will have it's own dedicated class that will know how to parse its structure
+
+<strategies>
+	<strategy name="Weekly1" Resolution="W">
+		<c1 name="Confirmation 1">
+			<source>ohlc4</source>
+			<parameter1>2</parameter1>
+			<parameter2>20</parameter2>
+		</c1>
+		<v1 name="Volume 1">
+			<parameter1>2</parameter1>
+			<parameter2>20</parameter2>
+		</v1>
+		<c2></c2>
+		<B></B>
+		<v2></v2>
+	</strategy>
+</strategies>
+-->
+<strategies>
+	<strategy name="Weekly1" Resolution="W">
+		<c1 name="Confirmation 1">
+			<source>ohlc4</source>
+			<parameter1>2</parameter1>
+			<parameter2>20</parameter2>
+		</c1>
+		<v1 name="Volume 1">
+			<parameter1>2</parameter1>
+			<parameter2>20</parameter2>
+		</v1>
+		<c2></c2>
+		<B></B>
+		<v2></v2>
+	</strategy>
+</strategies>
