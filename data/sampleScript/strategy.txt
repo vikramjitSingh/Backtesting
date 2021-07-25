@@ -1,0 +1,371 @@
+//@version=4
+//Base Ticker = Nifty500
+//reference version number - 187
+//reference version number - 219
+//reference version number - 240
+
+strategy("NNFX | Backtesting | Nifty | W ",shorttitle="NNFX_Nifty_Weekly"
+ ,overlay=true,pyramiding=0,calc_on_order_fills=false,calc_on_every_tick=false,
+  process_orders_on_close=true)
+
+src = input(title="Source",type=input.source, defval=hl2)
+
+//---------------------------- Jurik ----------------------------------------//
+//ideal len = 47, phase = 50, power = 9
+vJMA(src, len, pwr)=>
+    length = len
+    phase = input(title="Phase", type=input.integer, defval=50)
+    power = pwr
+    phaseRatio = phase < -100 ? 0.5 : phase > 100 ? 2.5 : phase / 100 + 1.5
+    jbeta = 0.45 * (length - 1) / (0.45 * (length - 1) + 2)
+    jalpha = pow(jbeta, power)
+    jma = 0.0
+    e0 = 0.0
+    e0 := (1 - jalpha) * src + jalpha * nz(e0[1])
+    e1 = 0.0
+    e1 := (src - e0) * (1 - jbeta) + jbeta * nz(e1[1])
+    e2 = 0.0
+    e2 := (e0 + phaseRatio * e1 - nz(jma[1])) * pow(1 - jalpha, 2) + pow(jalpha, 2) * nz(e2[1])
+    jma := e2 + nz(jma[1])
+
+//************************* ATR ******************************//
+atrlength = input(title="ATR Length", defval=7, minval=1)
+atrPower = input(title="ATR Power", defval=3, minval=1)
+atr = (vJMA(tr(true), atrlength, atrPower))
+
+
+//*********************Baseline********************************//
+baselineThreshold = input(1.0)
+
+cyclePeriod = input(title="Cycle Period", type=input.integer, minval=1, defval=7)
+
+//-------------------------------Kaufman-------------------------------------//
+//ideal len = 5, nFastend = 0.6, nSlowend = 0.005
+Length = cyclePeriod
+xPrice = src
+xvnoise = abs(xPrice - xPrice[1])
+nAMA = 0.0
+nfastend = input(title="nFastend", type=input.float, defval=0.5)
+nslowend = input(title="nSlowend", type=input.float, defval=0.05)
+nsignal = abs(xPrice - xPrice[Length])
+nnoise = sum(xvnoise, Length)
+nefratio = iff(nnoise != 0, nsignal / nnoise, 0)
+nsmooth = pow(nefratio * (nfastend - nslowend) + nslowend, 2) 
+nAMA := nz(nAMA[1]) + nsmooth * (xPrice - nz(nAMA[1]))
+KAMA = nAMA
+
+//---------------------------- confirmation c1 ----------------------------//
+//Custom Absolute Strength Indicator
+
+csrc = input(title="Source", type=input.source, defval=close)
+cbaseLength = input(12, title="C1 Base Length")
+cbasepower = input(1)
+csignalLength = input(4, title="C1 Signal Length")
+cosl = input(title="factor", type=input.integer, defval=10)
+
+calc_abssio() =>
+    A = 0.0
+    A := iff( csrc>csrc[1], nz(A[1])+(csrc/csrc[1])-1,nz(A[1]) )
+    M = 0.0
+    M := iff( csrc==csrc[1], nz(M[1])+1.0/cosl,nz(M[1]) )
+    D = 0.0
+    D := iff( csrc<csrc[1], nz(D[1])+(csrc[1]/csrc)-1,nz(D[1]) )
+    iff ( D+M/2==0, 1, 1-1/(1+(A+M/2)/(D+M/2)) )
+
+abssi = calc_abssio()
+abssio = ( abssi - vJMA(abssi, cbaseLength, cbasepower) )
+alp = 2.0/(csignalLength+1)
+
+mt = 0.0
+mt := alp*abssio+(1-alp)*nz(mt[1])
+
+ut = 0.0
+ut := alp*mt+(1-alp)*nz(ut[1])
+s=((2-alp)*mt-ut)/(1-alp)
+d=abssio-s
+
+c1signalType = abssio > 0 ? abssio >= s ? 1 : 0 : abssio <=s ? -1 : 0
+
+//---------------------------------------------------------------------------------//
+
+//-------------------------------- Volume / Volatility ------------------------------//
+//Waddah Attar Explosion [LazyBear]
+fastLength=input(3)
+fastpower = input(3)
+slowLength=input(33)
+slowpower = input(11)
+channelLength=input(10, title="BB Channel Length")
+channelpower = input(2)
+
+mult=input(2.0, title="BB Stdev Multiplier")
+deadZone=input(20, title="No trade zone threshold")
+sensitivity = input(150, title="Sensitivity")
+
+calc_macd(source, fastLength, fastpower, slowLength, slowpower) =>
+	fastMA = vJMA(source, fastLength, fastpower)
+	slowMA = vJMA(source, slowLength, slowpower)
+	fastMA - slowMA
+
+calc_BBUpper(source, length, mult, channelpower) => 
+	basis = vJMA(source, length, channelpower)
+	dev = mult * stdev(source, length)
+	basis + dev
+
+calc_BBLower(source, length, mult, channelpower) => 
+	basis = vJMA(source, length, channelpower)
+	dev = mult * stdev(source, length)
+	basis - dev
+
+t1 = (calc_macd(close, fastLength, fastpower, slowLength, slowpower) - calc_macd(close[1], fastLength, fastpower, slowLength, slowpower))*sensitivity
+ve1 = (calc_BBUpper(close, channelLength, mult, channelpower) - calc_BBLower(close, channelLength, mult, channelpower))
+
+trendUp = (t1 >= 0) ? t1 : 0
+trendDown = (t1 < 0) ? (-1*t1) : 0
+
+vsignalType = (trendUp > 0 and trendUp > ve1) ? 1 : (trendDown > 0 and trendDown > ve1) ? -1 : 0
+//colorC1 = (vsignalType == 1) ? color.green : (vsignalType == 0) ? color.orange : color.red
+//plot(vsignalType, title="Waddah Attar Explosion", linewidth=1, color=colorC1, transp=0)
+
+//---------------------------------------------------------------------------------//
+
+//--------------------------- confirmation - c2 -----------------------------------//
+//Custom FX Sniper: T3-CCI"
+CCI_Period = input(14, minval=1)
+T3_Period = input(2, minval=1)
+b = input(1)
+//hline(0, color=color.silver, linestyle=hline.style_dotted)
+c2xPrice = close
+b2 = pow(b,2)
+b3 = pow(b,3)
+c1 = -b3
+c2 = (3*(b2 + b3))
+c3 = -3*(2*b2 + b + b3)
+c4 = (1 + 3*b + b3 + 3*b2)
+nn = iff(T3_Period < 1, 1, T3_Period)
+nr = 1 + 0.5*(nn - 1)
+w1 = 2 / (nr + 1)
+w2 = 1 - w1    
+xcci = cci(c2xPrice, CCI_Period)
+e1=0.0
+e1 := w1*xcci + w2*nz(e1[1])
+e2=0.0
+e2 := w1*e1 + w2*nz(e2[1])
+e3=0.0
+e3 := w1*e2 + w2*nz(e3[1])
+e4=0.0
+e4 := w1*e3 + w2*nz(e4[1])
+e5=0.0
+e5 := w1*e4 + w2*nz(e5[1])
+e6=0.0
+e6 := w1*e5 + w2*nz(e6[1])
+xccir = c1*e6 + c2*e5 + c3*e4 + c4*e3
+c2SignalType = (xccir > 0 ) ? 1 : (xccir < 0 ) ? -1 : 0
+//cciHcolor = c2SignalType == 1 ? color.green : c2SignalType == -1 ? color.red : color.orange
+//plot(xccir, color=blue, title="T3-CCI")
+//plot(xccir, color=cciHcolor, title="CCIH", style = plot.style_stepline)
+
+//--------------------------------------------------------------------------------//
+baselinePlot = KAMA
+//plot(baselinePlot, title="Base Line Plot", linewidth=1, color=color.yellow, transp=0)
+
+baselineTriggerCondition = abs(baselinePlot - close) > (baselineThreshold*atr) ? false : true
+baselineSignal = (baselinePlot < close)  ? 1 : (baselinePlot > close)  ? -1 : 0
+Color = (baselineSignal == 1) ? color.green : (baselineSignal == -1) ? color.red : color.orange
+//plotshape(baselineSignal, title="Trade Type", style=shape.cross, color=Color, transp=100, size=size.auto)
+plotshape(atr, title="ATR", style=shape.cross, color=color.white, transp=100, size=size.auto)
+
+//calculate the number of contracts held.
+position_size = strategy.position_size
+
+longEntry = (strategy.position_size == 0) and (c1signalType == 1)
+longClose = (strategy.position_size > 0) and (c1signalType == -1)
+//plotshape(longEntry, title="New Trade Flag", style=shape.cross, color=color.purple, transp=100, size=size.auto)
+
+//longEntry = (strategy.position_size == 0) and (baselineTriggerCondition) and ( baselineSignal == 1 ) and (csignalType == 1)  and (vsignalType == 1) and (c2SignalType == 1)
+//longClose = (longEntry == true) and (baselinePlot > close) or (csignalType == -1) or (c2SignalType == -1)
+
+var entry_atr = 0.0 //track the atr at the time of entering a trade
+entry_atr := longEntry ? atr : entry_atr
+plotshape(entry_atr, title="Entry ATR", style=shape.cross, color=color.silver, transp=100, size=size.auto)
+
+var entry_close_orig = 0.0 //track of close price when we entered a new trade
+entry_close_orig := longEntry ? close : entry_close_orig
+//plotshape(entry_close_orig, title="Close Price at the time of entering trade", style=shape.cross, color=color.aqua, transp=100, size=size.auto)
+
+var take_profit_orig = 0.0
+take_profit_orig := longEntry ? entry_close_orig + entry_atr : take_profit_orig
+//plotshape(take_profit_orig, title="Take Profit 1", style=shape.cross, color=color.green, transp=100, size=size.auto)
+plot(take_profit_orig, title="Take Profit 1", style=plot.style_stepline, color=color.green)
+
+var stop_loss = 0.0 //stop_loss
+stop_loss := longEntry ? entry_close_orig - entry_atr : stop_loss
+plot(stop_loss, title="Trailing Stop loss", style=plot.style_stepline, color=color.red)
+
+//will be set to true once per trade entry
+var take_profit_flag = false
+take_profit_flag := (strategy.position_size == 2) and (take_profit_orig > 0.0) and (high > entry_close_orig + entry_atr) and (low > stop_loss)
+//plotshape(take_profit_flag, title="Take Profit Flag", style=shape.cross, color=color.green, transp=100, size=size.auto)
+
+var entry_close = 0.0 //track the close price after first profit is taken and then after every new high is achieved, till the trade is closed
+entry_close := longEntry ? close : entry_close
+//plotshape(entry_close, title="Updated Close Price", style=shape.cross, color=color.orange, transp=100, size=size.auto)
+
+//plotshape(strategy.position_size, title="strategy position size", style=shape.cross, color=color.yellow, transp=100, size=size.auto)
+//plotshape(position_size, title="position size", style=shape.cross, color=color.lime, transp=100, size=size.auto)
+
+//strategy.position_size == 1 		implies take_profit is true
+//entry_close == entry_close_orig 	implies that either this is the take_profit candle or the subsequent candle
+
+//after first take_profit, stop_loss should ideally move to entry_close_orig. but we can have case where close price when profit is taken is lower than entry_close_orig and take_profit_orig. In that case we will follow higher close price or fix entry_close_orig as stop_loss, respectively.
+
+//After profit, ideally stop_loss will remain <specified atr> away from the the last higher close price. But if the close price remains lower than take_profit_orig and more than entry_close_orig then stop_loss will remain fix at entry_close_orig.
+
+if(take_profit_flag and strategy.position_size == 2) and (entry_close == entry_close_orig) and (close < entry_close_orig) and (low > stop_loss)
+	entry_close := close
+	stop_loss := close
+
+if(take_profit_flag or strategy.position_size == 1) and (entry_close == entry_close_orig) and (close < entry_close_orig) and (low > stop_loss)
+	entry_close := close
+	stop_loss := close
+		
+if(take_profit_flag or strategy.position_size == 1) and (entry_close < entry_close_orig) and (low > stop_loss) and (close < entry_close_orig) and (close > entry_close)
+	entry_close := close
+	stop_loss := close
+
+if(take_profit_flag or strategy.position_size == 1) and (close == entry_close_orig) and (low > stop_loss) and (close > entry_close)
+	entry_close := close
+	stop_loss := close
+	
+if(take_profit_flag or strategy.position_size == 1) and (close > entry_close_orig) and (close <= take_profit_orig) and (low > stop_loss) and (close > entry_close)
+	entry_close := close
+	stop_loss := entry_close_orig
+
+if(take_profit_flag or strategy.position_size == 1) and (close > take_profit_orig) and (low > stop_loss) and (close > entry_close)
+	entry_close := close
+	stop_loss := entry_close - entry_atr
+	
+quantity_count = 1
+
+quantity_in = pow(2, quantity_count)
+
+firstPass=input(true, title="firstPass - Max look back")
+secondPass=input(false, title="secondPass - 5 years")
+thirdPass=input(false, title="thirdPass - 3 years")
+fourthPass=input(false, title="fourthPass - 1 year")
+
+if (firstPass == true)
+    strategy.entry("Long", strategy.long, when=longEntry, qty=quantity_in, comment="Long") //first pass
+if(secondPass == true)
+    strategy.entry("Long", strategy.long, when=longEntry and timestamp(2016, 03, 01, 9, 30) < time, qty=quantity_in, comment="Long") //second pass
+if (thirdPass == true)
+    strategy.entry("Long", strategy.long, when=longEntry and timestamp(2018, 03, 01, 9, 30) < time, qty=quantity_in, comment="Long") //third pass
+if (fourthPass == true)
+    strategy.entry("Long", strategy.long, when=longEntry and timestamp(2020, 03, 01, 9, 30) < time, qty=quantity_in, comment="Long") //fourth pass
+    
+//TODO: longClose will come into effect just before candle close. in that case we will be sure that take_profit will hit before candle close.
+//but it is closing trade without profit. Will appear wrong on the chart.
+strategy.close("Long", when=longClose, comment=" ")
+strategy.close("Long", when=take_profit_flag, qty_percent=50, comment=" ")
+//because stop_loss is updated before this so, we will check the previous value
+strategy.close("Long", when=(low <= stop_loss[1]), comment=" ")
+
+var actual_gross_profit=0.0
+var actual_gross_loss=0.0
+var total_closed_trades = 0
+var profitable_trades = 0
+var non_profitable_trades = 0
+var temp_max_drawdown = 0.0
+var max_drawdown = 0.0
+
+//debug
+var stop_count = 0
+var profit_count = 0
+var close_count = 0
+
+//we will have to calculate gross profit and loss ourself as the entry and exit functions are not getting called as per expectation.
+//if we add 'when' condition to them then their execution is made pending, thus delaying execution till andle close
+
+//if we hit take_profit level then add profit and increment profitable trades counter
+//note that take_profit & trade close can happen on same candle
+if(strategy.position_size[0] > 0 and take_profit_flag)	
+	profit = take_profit_orig - entry_close_orig
+	actual_gross_profit := actual_gross_profit + profit
+	profitable_trades := profitable_trades + 1
+	total_closed_trades := total_closed_trades + 1
+	profit_count := profit_count + 1
+	if(temp_max_drawdown > max_drawdown)
+		max_drawdown := temp_max_drawdown //update only if temp_max_drawdown is more than previouly recorded temp_max_drawdown
+	temp_max_drawdown := 0.0 //reset max drawdown on hitting profit.
+
+//because stop_loss is updated before this so, we will check the previous value
+//if we hit stop loss level then 
+//1. add profit and increment profitable trades counter if entry_close_orig is less than stop_loss
+//2. add loss and increment non-profitable trades counter if entry_close_orig is more or same as stop_loss
+if(strategy.position_size[0] > 0 and low <= stop_loss[1])
+	profit = (stop_loss[1] - entry_close_orig) * position_size
+	//loss - profit is negative therefore we will subtract from existing loss, effectively adding to existing loss
+	if(profit <= 0.0)
+		actual_gross_loss := actual_gross_loss - profit
+		non_profitable_trades := non_profitable_trades + 1
+		temp_max_drawdown := temp_max_drawdown - profit //add to existing loss
+	//profit
+	else
+		actual_gross_profit := actual_gross_profit + profit
+		profitable_trades := profitable_trades + 1
+		if(temp_max_drawdown > max_drawdown)
+			max_drawdown := temp_max_drawdown //update only if temp_max_drawdown is more than previouly recorded temp_max_drawdown
+		temp_max_drawdown := 0.0 //reset max drawdown on hitting profit
+		
+	total_closed_trades := total_closed_trades + 1
+	stop_count := stop_count + 1
+
+//if we closed the trade (this can happen in the same candle as take_profit.
+//1. add profit and increment profitable trades counter if entry_close_orig is less than close
+//2. add loss and increment non-profitable trades counter if entry_close_orig is more or same as close
+else if(longClose)
+	profit = (close - entry_close_orig) * position_size
+	//loss
+	if(profit <= 0.0)
+		actual_gross_loss := actual_gross_loss - profit
+		non_profitable_trades := non_profitable_trades + 1
+		temp_max_drawdown := temp_max_drawdown - profit //add to existing loss
+
+	//profit
+	else
+		actual_gross_profit := actual_gross_profit + profit
+		profitable_trades := profitable_trades + 1
+		if(temp_max_drawdown > max_drawdown)
+			max_drawdown := temp_max_drawdown //update only if temp_max_drawdown is more than previouly recorded temp_max_drawdown
+		temp_max_drawdown := 0.0 //reset max drawdown on hitting profit
+		
+	total_closed_trades := total_closed_trades + 1
+	close_count := close_count + 1
+	
+profit_factor = actual_gross_profit / actual_gross_loss
+profit_factor_color = profit_factor > 1.0 ? color.green : color.red
+percentage_profitable = (profitable_trades * 100) / total_closed_trades
+
+//TODO: add temp_max_drawdown, sharpe_ratio, avg_win, avg_loss, consecutive_loss_count, 
+//calculate pofitable, break-even & non-profitable trades and then calculate win ratio.
+
+
+//plotshape(strategy.netprofit[0], title="diff 0", style=shape.cross, color=color.purple, transp=100, size=size.auto)
+//plotshape(strategy.grossprofit[0], title="diff 0", style=shape.cross, color=color.green, transp=100, size=size.auto)
+//plotshape(strategy.grossloss[0], title="diff 0", style=shape.cross, color=color.red, transp=100, size=size.auto)
+//plotshape(strategy.netprofit[1], title="diff 1", style=shape.cross, color=color.maroon, transp=100, size=size.auto)
+//plotshape(strategy.position_size[0], title="position size 1", style=shape.cross, color=color.orange, transp=100, size=size.auto)
+
+plotshape(actual_gross_profit, title="actual gross profit", style=shape.cross, color=color.green, transp=100, size=size.auto)
+plotshape(actual_gross_loss, title="actual gross loss", style=shape.cross, color=color.red, transp=100, size=size.auto)
+plotshape(profit_factor, title="actual profit factor", style=shape.cross, color=profit_factor_color, transp=100, size=size.auto)
+plotshape(percentage_profitable, title="profitable trades (percentage)", style=shape.cross, color=color.silver, transp=100, size=size.auto)
+plotshape(total_closed_trades, title="total closed trades", style=shape.cross, color=color.orange, transp=100, size=size.auto)
+plotshape(max_drawdown, title="max drawdown", style=shape.cross, color=color.red, transp=100, size=size.auto)
+//plotshape(temp_max_drawdown, title="temp max drawdown", style=shape.cross, color=color.white, transp=100, size=size.auto)
+//plotshape(profitable_trades, title="profitable trades (count)", style=shape.cross, color=color.orange, transp=100, size=size.auto)
+//plotshape(non_profitable_trades, title="non profitable trades", style=shape.cross, color=color.orange, transp=100, size=size.auto)
+
+//plotshape(series, title, style, location, color, transp, offset, text, textcolor, editable, size, show_last, display)
+plotshape(profit_count[0] > profit_count[1], title="take profit count", style=shape.cross, color=color.silver, transp=0, text="l_profit", size=size.auto)
+plotshape(stop_count[0] > stop_count[1], title="stop loss hit count", style=shape.cross, color=color.silver, transp=0, text="l_stop", size=size.auto)
+plotshape(close_count[0] > close_count[1], title="close count", style=shape.cross, color=color.silver, transp=0, text="l_close", size=size.auto)
