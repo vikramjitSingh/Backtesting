@@ -13,6 +13,7 @@ namespace BTF
 	class SecurityInfo
 	{
 		public:
+			std::vector<std::string> date;
 			std::vector<float> open;
 			std::vector<float> high;
 			std::vector<float> low;
@@ -41,7 +42,7 @@ namespace BTF
 
 						size_t l_columnCount{0};
 						std::string l_token;
-						bool l_bParseHeader {false};
+						bool l_bParseHeader {true};
 
 						while ( (!l_bFileMisformed) && (l_pos = l_line.find(l_delimiter)) != std::string::npos ) 
 						{
@@ -53,6 +54,10 @@ namespace BTF
 								{
 									l_line.erase(0, l_pos + l_delimiter.length());
 								}
+								else if (!l_bParseHeader)
+								{
+									o_PriceInfo.date.push_back(l_token)
+								}
 								else
 								{
 									l_bFileMisformed = true;
@@ -63,122 +68,131 @@ namespace BTF
 							}
 							else if(l_columnCount == 1)
 							{
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "Open" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
+								l_token = l_line.substr(0, l_pos);
+								std::cout << l_token << std::endl;
+								if(l_bParseHeader && "Open" == l_token)
+								{
+									l_line.erase(0, l_pos + l_delimiter.length());
+								}
+								else if (!l_bParseHeader)
+								{
+									o_PriceInfo.open.push_back(l_token)
+								}
+								else
+								{
+									l_bFileMisformed = true;
+									std::cout<<"first line of the file should contain the header: Open"<<std::endl;
+								}
 
 								l_columnCount++;
 							} 
 							else if(l_columnCount == 2)
-                                                        {
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "High" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
-
-								l_columnCount++;
-                                                        }
-							else if(l_columnCount == 2)
-                                                        {
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "High" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
+							{
+								l_token = l_line.substr(0, l_pos);
+								std::cout << l_token << std::endl;
+								if(l_bParseHeader && "High" == l_token)
+								{
+										l_line.erase(0, l_pos + l_delimiter.length());
+								}
+								else if (!l_bParseHeader)
+								{
+									o_PriceInfo.high.push_back(l_token)
+								}
+								else
+								{
+									l_bFileMisformed = true;
+									std::cout<<"first line of the file should contain the header: High"<<std::endl;
+								}
 
 								l_columnCount++;
                                                         }
 							else if(l_columnCount == 3)
-                                                        {
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "Low" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
-						
-								l_columnCount++;
-                                                        }
-							else if(l_columnCount == 4)
-                                                        {
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "Close" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
+							{
+								l_token = l_line.substr(0, l_pos);
+								std::cout << l_token << std::endl;
+								if(l_bParseHeader && "Low" == l_token)
+								{
+									l_line.erase(0, l_pos + l_delimiter.length());
+								}
+								else if (!l_bParseHeader)
+								{
+									o_PriceInfo.low.push_back(l_token)
+								}
+								else
+								{
+									l_bFileMisformed = true;
+									std::cout<<"first line of the file should contain the header: Low"<<std::endl;
+								}
 
 								l_columnCount++;
                                                         }
+							else if(l_columnCount == 4)
+							{
+								l_token = l_line.substr(0, l_pos);
+								std::cout << l_token << std::endl;
+								if(l_bParseHeader && "Close" == l_token)
+								{
+									l_line.erase(0, l_pos + l_delimiter.length());
+								}
+								else if (!l_bParseHeader)
+								{
+									o_PriceInfo.close.push_back(l_token)
+								}
+								else
+								{
+									l_bFileMisformed = true;
+									std::cout<<"first line of the file should contain the header: Close"<<std::endl;
+								}
+						
+								l_columnCount++;
+                                                        }
 							else if(l_columnCount == 5)
-                                                        {
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "Adj Close" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
+							{
+								l_token = l_line.substr(0, l_pos);
+								std::cout << l_token << std::endl;
+								if(l_bParseHeader && "Adj Close" == l_token)
+								{
+									l_line.erase(0, l_pos + l_delimiter.length());
+								}
+								else if (!l_bParseHeader)
+								{
+									//o_PriceInfo.open.push_back(l_token)
+									continue;
+								}
+								else
+								{
+									l_bFileMisformed = true;
+									std::cout<<"first line of the file should contain the header: Adj Close"<<std::endl;
+								}
 
 								l_columnCount++;
                                                         }
 							else if(l_columnCount == 6)
-                                                        {
-                                                                l_token = l_line.substr(0, l_pos);
-                                                                std::cout << l_token << std::endl;
-                                                                if(l_bParseHeader && "High" == l_token)
-                                                                {
-                                                                        l_line.erase(0, l_pos + l_delimiter.length());
-                                                                }
-                                                                else
-                                                                {
-                                                                        l_bFileMisformed = true;
-                                                                        std::cout<<"first line of the file should contain the header: Open"<<std::endl;
-                                                                }
-								
-								l_columnCount = 0; //reset column count for next iteration
+							{
+								l_token = l_line.substr(0, l_pos);
+								std::cout << l_token << std::endl;
+								if(l_bParseHeader && "Volume" == l_token)
+								{
+									l_line.erase(0, l_pos + l_delimiter.length());
+								}
+								else if (!l_bParseHeader)
+								{
+									o_PriceInfo.volume.push_back(l_token)
+								}
+								else
+								{
+									l_bFileMisformed = true;
+									std::cout<<"first line of the file should contain the header: Volume"<<std::endl;
+								}
+
+								l_columnCount++;
                                                         }
 							else
-                                                        {
+							{
 								l_columnCount++;
-                                                                l_bFileMisformed = true;
-                                                                std::cout<<"Unexpeced column size: "<< l_columnCount<<std::endl;
-                                                        }
+								l_bFileMisformed = true;
+								std::cout<<"Unexpeced column size: "<< l_columnCount<<std::endl;
+							}
 						}
 
 					}
